@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Топливо · Калининград</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#10233f;--muted:#6a7894;--line:#e3e8f0;--bg:#f4f6fb;
+    --yes:#1ea566;--no:#e23b36;--gray:#9aa6bd;--amber:#f0a92a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100dvh}
+
+  header{padding:11px 15px 9px;background:#fff;border-bottom:1px solid var(--line);z-index:500}
+  .titlerow{display:flex;align-items:center;gap:8px}
+  .title{font-size:17px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+  .title .d{color:var(--amber)}
+  .demo{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--amber);border:1px solid #f3d08a;padding:3px 7px;border-radius:99px}
+  .sub{margin-top:3px;font-size:12px;color:var(--muted);line-height:1.35}
+
+  .bar{display:flex;gap:7px;padding:9px 15px 0;overflow-x:auto;scrollbar-width:none;background:#fff;z-index:500}
+  .bar::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--muted);background:#eef1f7;border:1px solid var(--line);padding:7px 13px;border-radius:99px;cursor:pointer}
+  .chip.active{color:#3a2700;background:var(--amber);border-color:var(--amber)}
+  .stat{padding:7px 15px 8px;font-size:12px;color:var(--muted);background:#fff;z-index:500}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+  .maparea{position:relative;flex:1;min-height:0}
+  #map{position:absolute;inset:0;background:#aadaff}
+  .leaflet-container{font:inherit}
+
+  .legend{position:absolute;left:10px;bottom:18px;z-index:500;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:12px;padding:8px 10px;font-size:11.5px;color:var(--muted);line-height:1.7;box-shadow:0 4px 14px rgba(20,40,80,.1)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  .loading{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:12px;color:var(--muted);box-shadow:0 4px 14px rgba(20,40,80,.1)}
+
+  .scrim{position:fixed;inset:0;background:rgba(15,25,45,.35);opacity:0;pointer-events:none;transition:.2s;z-index:900}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:901;background:#fff;border-radius:18px 18px 0 0;transform:translateY(110%);transition:transform .26s cubic-bezier(.22,.8,.3,1);max-width:560px;margin:0 auto;box-shadow:0 -8px 30px rgba(20,40,80,.18)}
+  .sheet.open{transform:translateY(0)}
+  .handle{width:40px;height:5px;background:#d4dae6;border-radius:99px;margin:9px auto 2px}
+  .sheet-in{padding:6px 18px 20px}
+  .sheet-brand{font-size:18px;font-weight:800}
+  .sheet-addr{font-size:13px;color:var(--muted);margin-top:2px}
+  .sheet-meta{font-size:12px;color:var(--muted);margin-top:6px}
+  .fuel-rows{margin-top:13px;display:flex;flex-direction:column;gap:9px}
+  .frow{display:flex;align-items:center;gap:9px;background:#f7f9fd;border:1px solid var(--line);border-radius:13px;padding:10px 11px}
+  .fname{font-size:15px;font-weight:800;width:60px}
+  .fstatus{font-size:12px;color:var(--muted);flex:1;min-width:0}
+  .tag{font-weight:800}.tag.yes{color:var(--yes)}.tag.no{color:var(--no)}.tag.un{color:var(--gray)}
+  .btns{display:flex;gap:6px}
+  .b{border:1px solid var(--line);background:#fff;color:var(--ink);font-size:13px;font-weight:800;padding:9px 12px;border-radius:10px;cursor:pointer}
+  .b.yes.on{background:var(--yes);border-color:var(--yes);color:#fff}
+  .b.no.on{background:var(--no);border-color:var(--no);color:#fff}
+  .b:active{transform:scale(.96)}
+  .sheet-foot{margin-top:12px;font-size:11.5px;color:var(--muted);text-align:center;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="titlerow">
+      <div class="title">Топливо<span class="d">·</span>Калининград</div>
+      <div class="demo">ДЕМО</div>
+    </div>
+    <div class="sub">Где сейчас есть топливо — отмечают сами водители. Нажми на заправку.</div>
+  </header>
+  <div class="bar" id="filters">
+    <div class="chip active" data-f="all">Все</div>
+    <div class="chip" data-f="f92">АИ-92</div>
+    <div class="chip" data-f="f95">АИ-95</div>
+    <div class="chip" data-f="fdt">ДТ</div>
+  </div>
+  <div class="stat" id="stat">Загрузка…</div>
+
+  <div class="maparea">
+    <div id="map"></div>
+    <div class="loading" id="loading">Загружаю заправки области…</div>
+    <div class="legend">
+      <div><i style="background:var(--yes)"></i>есть топливо</div>
+      <div><i style="background:var(--no)"></i>нет топлива</div>
+      <div><i style="background:var(--gray)"></i>нет данных / устарело</div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet">
+  <div class="handle"></div>
+  <div class="sheet-in">
+    <div class="sheet-brand" id="sBrand">—</div>
+    <div class="sheet-addr" id="sAddr">—</div>
+    <div class="sheet-meta" id="sMeta"></div>
+    <div class="fuel-rows" id="sRows"></div>
+    <div class="sheet-foot">Отметка сразу появится на карте. Через 3 часа она «устареет» и поблекнет.</div>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   ⚙️  НАСТРОЙКИ — здесь можно менять всё, что ты захочешь.
+   Меняй только текст в кавычках. Не убирай кавычки и запятые.
+   ==================================================================== */
+const CONFIG = {
+
+  // Заголовок и подзаголовок вверху
+  TITLE:    "Топливо · Калининград",
+  SUBTITLE: "Где сейчас есть топливо — отмечают сами водители. Нажми на заправку.",
+
+  // Цвет акцента (кнопки-фильтры, рамки). Можно поставить любой код цвета,
+  // например: "#f0a92a" — оранжевый, "#1ea566" — зелёный, "#2b7fff" — синий
+  ACCENT:   "#f0a92a",
+
+  // Подгружать все заправки области автоматически из открытой базы? true = да, false = нет
+  LOAD_OSM: true,
+
+  // ОБЩИЕ ОТМЕТКИ ДЛЯ ВСЕХ.
+  // Пока пусто "" — отметки сохраняются только на твоём телефоне.
+  // Вставь сюда адрес своей базы Firebase (как — в инструкции), и отметки
+  // станут общими: что отметил один, увидят все. Пример:
+  // "https://мой-проект-default-rtdb.firebaseio.com"
+  DB_URL: "",
+
+  // Твои собственные заправки (всегда на карте). Чтобы добавить — впиши строку
+  // по образцу. Координаты (lat, lon) можно взять, нажав на точку на картах.
+  MY_STATIONS: [
+    // {b:"Моя АЗС", a:"ул. Примерная, 1", lat:54.710, lon:20.510},
+  ]
+
+};
+/* ====================== КОНЕЦ НАСТРОЕК ============================== */
+
+const FUELS=[["f92","АИ-92"],["f95","АИ-95"],["fdt","ДТ"]];
+const STALE=3*60*60*1000;
+const COL={yes:"#1ea566",no:"#e23b36",un:"#9aa6bd",stale:"#9aa6bd"};
+
+const fallback=[
+ {id:"f1",b:"Лукойл",a:"Московский пр-т, 182",lat:54.706,lon:20.530},
+ {id:"f2",b:"Балтнефть",a:"Ленинский пр-т, 30",lat:54.713,lon:20.512},
+ {id:"f3",b:"Сургутнефтегаз",a:"ул. А. Невского, 25",lat:54.728,lon:20.539},
+ {id:"f4",b:"Роснефть",a:"Советский пр-т, 188",lat:54.742,lon:20.500},
+ {id:"f5",b:"Балтнефть",a:"Зеленоградск",lat:54.955,lon:20.485},
+ {id:"f6",b:"Лукойл",a:"Светлогорск",lat:54.940,lon:20.160},
+ {id:"f7",b:"Роснефть",a:"Балтийск",lat:54.650,lon:19.920},
+ {id:"f8",b:"Балтнефть",a:"Черняховск",lat:54.630,lon:21.810},
+ {id:"f9",b:"Лукойл",a:"Гусев",lat:54.590,lon:22.200},
+ {id:"f10",b:"Роснефть",a:"Советск",lat:55.080,lon:21.880}
+];
+
+let stations=[], state={}, mById={}, activeFilter="all", curId=null, map=null;
+
+const KEY=id=>"fuelkgd:"+id;
+function load(id){try{const v=localStorage.getItem(KEY(id));return v?JSON.parse(v):{f92:null,f95:null,fdt:null};}catch(e){return{f92:null,f95:null,fdt:null};}}
+function localSave(id){try{localStorage.setItem(KEY(id),JSON.stringify(state[id]));}catch(e){}}
+function dbBase(){return CONFIG.DB_URL.replace(/\/+$/,"");}
+
+// сохранить отметку: на устройство + (если задана база) в общую базу
+function pushFuel(id,f){
+  localSave(id);
+  if(!CONFIG.DB_URL) return;
+  fetch(dbBase()+"/marks/"+encodeURIComponent(id)+".json",
+    {method:"PATCH",headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({[f]:state[id][f]})}).catch(()=>{});
+}
+
+// забрать общие отметки и показать их у себя
+function pullAll(){
+  if(!CONFIG.DB_URL) return;
+  fetch(dbBase()+"/marks.json").then(r=>r.json()).then(d=>{
+    if(!d) return;
+    for(const id in d){ if(state[id]){ for(const [f] of FUELS){ if(d[id]&&d[id][f]) state[id][f]=d[id][f]; } } }
+    recolor(); updateStat(); if(sheet.classList.contains("open")) renderSheet();
+  }).catch(()=>{});
+}
+
+function statusOf(e){if(!e)return"un";if(Date.now()-e.ts>STALE)return"stale";return e.s?"yes":"no";}
+function overallKey(id){let yes=false,any=false;for(const[f]of FUELS){const s=statusOf(state[id][f]);if(s==="yes"){yes=true;any=true;}else if(s==="no")any=true;}return yes?"yes":any?"no":"un";}
+function colorKeyFor(id){if(activeFilter==="all")return overallKey(id);const s=statusOf(state[id][activeFilter]);return s==="yes"?"yes":s==="no"?"no":"un";}
+
+function styleFor(id){
+  const ck=colorKeyFor(id);
+  const dim=activeFilter!=="all"&&ck!=="yes";
+  return {radius:7,weight:2,color:"#fff",fillColor:COL[ck],fillOpacity:dim?0.45:1,opacity:dim?0.5:1};
+}
+function addMarker(st){
+  const m=L.circleMarker([st.lat,st.lon],styleFor(st.id));
+  m.on("click",()=>openSheet(st.id));
+  m.bindTooltip(st.b,{direction:"top"});
+  m.addTo(map); mById[st.id]=m;
+}
+function recolor(){for(const st of stations){const m=mById[st.id];if(m)m.setStyle(styleFor(st.id));}}
+function updateStat(){
+  const c=f=>stations.filter(s=>statusOf(state[s.id][f])==="yes").length;
+  document.getElementById("stat").innerHTML=
+    `Заправок на карте: <b>${stations.length}</b> · есть 92 — <b>${c("f92")}</b>, 95 — <b>${c("f95")}</b>, ДТ — <b>${c("fdt")}</b>`;
+}
+
+const sheet=document.getElementById("sheet"),scrim=document.getElementById("scrim");
+function relTime(ts){const d=Date.now()-ts,m=Math.floor(d/60000);if(d>STALE)return"устарело";if(m<1)return"только что";if(m<60)return m+" мин назад";return Math.floor(m/60)+" ч назад";}
+function rowHTML(id,f,name){
+  const e=state[id][f],s=statusOf(e);let txt,cls;
+  if(!e){txt="нет данных";cls="un";}
+  else if(s==="stale"){txt="устарело (было: "+(e.s?"есть":"нет")+")";cls="un";}
+  else{txt=(e.s?"есть":"нет")+" · "+relTime(e.ts);cls=e.s?"yes":"no";}
+  return `<div class="frow"><div class="fname">${name}</div>
+    <div class="fstatus"><span class="tag ${cls}">${txt}</span></div>
+    <div class="btns">
+      <button class="b yes ${e&&s!=='stale'&&e.s?'on':''}" data-f="${f}" data-s="1">Есть</button>
+      <button class="b no ${e&&s!=='stale'&&!e.s?'on':''}" data-f="${f}" data-s="0">Нет</button>
+    </div></div>`;
+}
+function renderSheet(){
+  const st=stations.find(s=>s.id===curId);
+  document.getElementById("sBrand").textContent=st.b;
+  document.getElementById("sAddr").textContent=st.a||"";
+  let n=0;for(const[f]of FUELS){const e=state[st.id][f];if(e&&e.ts>n)n=e.ts;}
+  document.getElementById("sMeta").textContent=n?"Последнее обновление: "+relTime(n):"Эту заправку ещё никто не отмечал";
+  document.getElementById("sRows").innerHTML=FUELS.map(([f,nm])=>rowHTML(st.id,f,nm)).join("");
+  document.querySelectorAll("#sRows .b").forEach(b=>b.addEventListener("click",()=>{
+    state[curId][b.dataset.f]={s:+b.dataset.s,ts:Date.now()};
+    pushFuel(curId,b.dataset.f);renderSheet();recolor();updateStat();
+  }));
+}
+function openSheet(id){curId=id;renderSheet();sheet.classList.add("open");scrim.classList.add("show");}
+function closeSheet(){sheet.classList.remove("open");scrim.classList.remove("show");}
+scrim.addEventListener("click",closeSheet);
+document.querySelector(".handle").addEventListener("click",closeSheet);
+
+document.getElementById("filters").addEventListener("click",e=>{
+  const c=e.target.closest(".chip");if(!c)return;
+  document.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));
+  c.classList.add("active");activeFilter=c.dataset.f;recolor();
+});
+
+const OVERPASS=[
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+];
+function parseEls(els){
+  return els.map(el=>{
+    const t=el.tags||{};
+    const lat = el.lat!=null?el.lat:(el.center&&el.center.lat);
+    const lon = el.lon!=null?el.lon:(el.center&&el.center.lon);
+    if(lat==null||lon==null) return null;
+    const brand=t.brand||t.operator||t.name||"АЗС";
+    const addr=t["addr:street"]?(t["addr:street"]+(t["addr:housenumber"]?", "+t["addr:housenumber"]:"")):"";
+    return {id:"osm"+el.type+el.id,b:brand,a:addr,lat:lat,lon:lon};
+  }).filter(Boolean);
+}
+function overpass(){
+  // и точки, и контуры заправок; out center — чтобы у контуров была координата центра
+  const q=`[out:json][timeout:30];(node["amenity"="fuel"](54.30,19.55,55.35,22.95);way["amenity"="fuel"](54.30,19.55,55.35,22.95););out center tags;`;
+  let i=0;
+  function tryNext(){
+    if(i>=OVERPASS.length) return Promise.reject("all failed");
+    const url=OVERPASS[i++];
+    return fetch(url,{method:"POST",body:"data="+encodeURIComponent(q)})
+      .then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(d=>{ const list=parseEls(d.elements||[]); if(!list.length) throw new Error("empty"); return list; })
+      .catch(()=>tryNext());
+  }
+  return tryNext();
+}
+function buildStations(list){
+  const mine=(CONFIG.MY_STATIONS||[]).map((s,i)=>({id:"my"+i,b:s.b,a:s.a||"",lat:s.lat,lon:s.lon}));
+  stations=mine.concat(list);
+  for(const st of stations){state[st.id]=load(st.id);addMarker(st);}
+  updateStat();
+}
+
+function startLoops(){
+  setInterval(()=>{recolor();updateStat();if(sheet.classList.contains("open"))renderSheet();},60000);
+  if(CONFIG.DB_URL) setInterval(pullAll,30000);
+}
+function init(){
+  // применяем настройки из блока CONFIG
+  document.querySelector(".title").textContent=CONFIG.TITLE;
+  document.querySelector(".sub").textContent=CONFIG.SUBTITLE;
+  document.documentElement.style.setProperty("--amber",CONFIG.ACCENT);
+
+  map=L.map("map",{zoomControl:true}).setView([54.71,20.51],12);
+  map.attributionControl.setPrefix(false);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19, attribution:"© OpenStreetMap"
+  }).addTo(map);
+
+  const done=list=>{ buildStations(list); document.getElementById("loading").style.display="none"; pullAll(); startLoops(); };
+
+  if(!CONFIG.LOAD_OSM){ done([]); return; }
+  overpass()
+    .then(list=>done(list&&list.length?list:fallback))
+    .catch(()=>{
+      buildStations(fallback); pullAll(); startLoops();
+      const l=document.getElementById("loading");
+      l.innerHTML="Полный список не загрузился. Если ты в окне Клода — открой файл в браузере";
+      setTimeout(()=>l.style.display="none",4000);
+    });
+}
+
+if(typeof L!=="undefined"){ init(); }
+else { document.getElementById("loading").textContent="Карта не загрузилась — открой файл в браузере"; }
+</script>
+</body>
+</html>
